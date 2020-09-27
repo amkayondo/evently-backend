@@ -19,6 +19,7 @@ import {
   checkFollowUser
 } from '../../middleware/users/checkUser';
 import asyncHandler from '../../helpers/errorsHandler/asyncHandler';
+import userOrOganizer from '../../middleware/users/organizerOrUser';
 import auth from '../../middleware/users/auth';
 import isAdminAuth from '../../middleware/users/isAdminAuth';
 import checkToken from '../../middleware/users/checkToken';
@@ -101,7 +102,7 @@ router.post(
   asyncHandler(checkFollowUser),
   asyncHandler(users.followUser)
 );
-router.delete(
+router.put(
   '/:userId/unfollow',
   asyncHandler(auth),
   asyncHandler(checkFollowUser),
@@ -123,6 +124,16 @@ router.get(
   '/organizers',
   asyncHandler(isAdminAuth),
   asyncHandler(users.fetchOrgnizers)
+);
+router.get(
+  '/followers',
+  asyncHandler(userOrOganizer),
+  asyncHandler(users.myFollowers)
+);
+router.get(
+  '/followings',
+  asyncHandler(userOrOganizer),
+  asyncHandler(users.myFollowings)
 );
 
 export default router;

@@ -2,6 +2,7 @@ import gravatar from 'gravatar';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import { Op } from 'sequelize';
 import models from '../models/index';
 import httpError from '../helpers/errorsHandler/httpError';
 import generateToken from '../helpers/generateToken/generateToken';
@@ -12,8 +13,15 @@ import { getRole } from '../helpers/sendEmail/emailTemplates';
 import findOneHelper from '../helpers/rolesHelper/findOneHelper';
 
 dotenv.config();
-const { User, Roles, Follow, UserActivity } = models;
+const { User, Roles, Follow, UserActivity, Experience } = models;
 const { secretKey } = process.env;
+const includeUser = () => {
+  return [
+    {
+      model: Experience
+    }
+  ];
+};
 /**
  * @user Controller
  * @exports
@@ -453,6 +461,7 @@ class UserController {
       where: {
         id: following
       },
+      include: includeUser(),
       attributes: [
         'id',
         'firstName',
@@ -463,15 +472,30 @@ class UserController {
         'isActivated'
       ]
     });
+    const flwerUser = await User.findOne({
+      where: { email: follower },
+      include: includeUser(),
+      attributes: {
+        exclude: [
+          'password',
+          'isActivated',
+          'deviceToken',
+          'createdAt',
+          'updatedAt'
+        ]
+      }
+    });
+    const { dataValues: followerObj } = flwerUser;
 
     if (!isUserExist) {
       throw new httpError(404, 'User does not exist');
     }
-    const { dataValues: userObj } = isUserExist;
+    const { dataValues: followingObj } = isUserExist;
+
     const isFollowed = await Follow.findOne({
       where: {
         isFollowing: true,
-        following: userObj.email,
+        following: followingObj.email,
         follower
       }
     });
@@ -481,7 +505,7 @@ class UserController {
     const canFollow = await Follow.findOne({
       where: {
         isFollowing: false,
-        following: userObj.email,
+        following: followingObj.email,
         follower
       }
     });
@@ -493,34 +517,30 @@ class UserController {
         {
           where: {
             isFollowing: false,
-            following: userObj.email,
+            following: followingObj.email,
             follower
           },
           returning: true
         }
       );
-      userObj.email = undefined;
+      const { dataValues } = data;
+      followingObj.email = undefined;
       return res.send({
         status: 200,
         follow: true,
-        data: userObj
+        data: dataValues
       });
     }
     const response = await Follow.create({
-      id: userObj.id,
-      following: userObj.email,
+      following: followingObj.email,
       follower,
+      followerObj,
+      followingObj,
       isFollowing: true
     });
-    userObj.email = undefined;
-    response.following = userObj;
-    response.follower = {
-      firstName: req.user.firstName,
-      lastName: req.user.lastName,
-      userName: req.user.userName,
-      avatar: req.user.avatar,
-      emai: req.user.email
-    };
+
+    followingObj.email = undefined;
+
     return res.send({
       status: 200,
       follow: true,
@@ -545,6 +565,7 @@ class UserController {
       throw new httpError(404, 'User does not exist');
     }
     const { dataValues: userObj } = isUserExist;
+
     const isunFollowed = await Follow.findOne({
       where: {
         follower,
@@ -552,6 +573,7 @@ class UserController {
         isFollowing: true
       }
     });
+
     if (!isunFollowed) {
       throw new httpError(404, 'User already unfollowed');
     }
@@ -574,6 +596,67 @@ class UserController {
         avatar: userObj.avatar
       },
       message: 'User unfollowed'
+    });
+  }
+
+  /**
+   *
+   * @param {Object} req - Request from user
+   * @param {Object} res - Response to the user
+   * @returns {Object} Response
+   */
+  async myFollowers(req, res) {
+    const { user } = req;
+    const followers = await Follow.findAll({
+      attributes: ['followerObj'],
+      where: {
+        isFollowing: true,
+        follower: {
+          [Op.not]: user.email
+        },
+        following: user.email
+      }
+    });
+    if (!followers.length) {
+      return res.status(200).json({
+        status: 200,
+        message: "You don't have any follower sofar"
+      });
+    }
+    return res.status(200).json({
+      status: 200,
+      followers
+    });
+  }
+
+  /**
+   *
+   * @param {Object} req - Request from user
+   * @param {Object} res - Response to the user
+   * @returns {Object} Response
+   */
+  async myFollowings(req, res) {
+    const { user } = req;
+    const follwings = await Follow.findAll({
+      attributes: ['followingObj'],
+      where: {
+        isFollowing: true,
+        following: {
+          [Op.not]: user.email
+        },
+        follower: user.email
+      }
+    });
+    if (!follwings.length) {
+      return res.status(200).json({
+        status: 200,
+        message: 'Sofar, your are not following any one'
+      });
+    }
+
+    return res.status(200).json({
+      status: 200,
+      follwings
     });
   }
 
